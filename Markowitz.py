@@ -218,22 +218,23 @@ class MeanVariancePortfolio:
                 TODO: Complete Task 3 Below
                 """
 
+                # 決策變數：每個資產的權重 (0 <= w_i <= 1)
                 w = model.addMVar(n, lb=0.0, ub=1.0, name="w")
 
+                # no leverage：所有權重加總 = 1
                 model.addConstr(w.sum() == 1.0, name="budget")
 
-                obj_lin = gp.LinExpr()
-                for i in range(n):
-                    if mu[i] != 0:
-                        obj_lin.addTerms(mu[i], w[i])
+                # 期望報酬：w^T mu
+                lin_part = mu @ w
 
-                risk = gp.QuadExpr()
-                for i in range(n):
-                    for j in range(n):
-                        if Sigma[i, j] != 0:
-                            risk.addTerms(Sigma[i, j], w[i], w[j])
+                # 風險：w^T Sigma w
+                quad_part = w @ Sigma @ w
 
-                model.setObjective(obj_lin - (gamma / 2.0) * risk, gp.GRB.MAXIMIZE)
+                # 目標：max w^T mu - (gamma / 2) * w^T Sigma w
+                model.setObjective(
+                    lin_part - (gamma / 2.0) * quad_part,
+                    gp.GRB.MAXIMIZE,
+                )
 
                 """
                 TODO: Complete Task 3 Above
@@ -257,7 +258,6 @@ class MeanVariancePortfolio:
                     solution = []
                     for i in range(n):
                         var = model.getVarByName(f"w[{i}]")
-                        # print(f"w {i} = {var.X}")
                         solution.append(var.X)
 
         return solution
