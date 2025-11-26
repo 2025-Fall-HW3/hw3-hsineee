@@ -58,7 +58,7 @@ class MyPortfolio:
         self.lookback = lookback
         self.gamma = gamma
 
-    def calculate_weights(self):
+        def calculate_weights(self):
         # Get the assets by excluding the specified column
         assets = self.price.columns[self.price.columns != self.exclude]
 
@@ -70,14 +70,52 @@ class MyPortfolio:
         """
         TODO: Complete Task 4 Below
         """
-        
-        
+
+        n_assets = len(assets)
+        base_eqw = 1.0 / n_assets
+        self.portfolio_weights.loc[:, assets] = base_eqw
+        self.portfolio_weights[self.exclude] = 0.0
+
+        vol_lookback = self.lookback
+        mom_lookback = max(self.lookback * 3, 60)
+
+        start_idx = max(vol_lookback, mom_lookback)
+
+        for i in range(start_idx, len(self.price)):
+            idx = self.price.index[i]
+
+            window_returns = self.returns[assets].iloc[i - vol_lookback : i]
+            vol = window_returns.std()
+
+            inv_vol = 1.0 / vol.replace(0, np.nan)
+            inv_vol.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+            if inv_vol.isna().all():
+                rp_weight = pd.Series(1.0 / n_assets, index=assets)
+            else:
+                inv_vol = inv_vol.fillna(0.0)
+                rp_weight = inv_vol / inv_vol.sum()
+
+            price_now = self.price[assets].iloc[i - 1]
+            price_past = self.price[assets].iloc[i - mom_lookback]
+            mom = (price_now / price_past - 1).replace([np.inf, -np.inf], 0).fillna(0.0)
+
+            mom_score = 1.0 + mom
+            if (mom_score <= 0).all():
+                mom_score = pd.Series(1.0, index=assets)
+
+            combined = rp_weight * mom_score
+            combined = combined / combined.sum()
+
+            self.portfolio_weights.loc[idx, assets] = combined.values
+
         """
         TODO: Complete Task 4 Above
         """
 
         self.portfolio_weights.ffill(inplace=True)
         self.portfolio_weights.fillna(0, inplace=True)
+
 
     def calculate_portfolio_returns(self):
         # Ensure weights are calculated

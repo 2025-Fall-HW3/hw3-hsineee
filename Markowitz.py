@@ -54,7 +54,7 @@ class EqualWeightPortfolio:
     def __init__(self, exclude):
         self.exclude = exclude
 
-    def calculate_weights(self):
+        def calculate_weights(self):
         # Get the assets by excluding the specified column
         assets = df.columns[df.columns != self.exclude]
         self.portfolio_weights = pd.DataFrame(index=df.index, columns=df.columns)
@@ -62,6 +62,14 @@ class EqualWeightPortfolio:
         """
         TODO: Complete Task 1 Below
         """
+
+        n_assets = len(assets)
+        equal_weight = 1.0 / n_assets
+
+        self.portfolio_weights.loc[:, assets] = equal_weight
+
+        if self.exclude in self.portfolio_weights.columns:
+            self.portfolio_weights[self.exclude] = 0.0
 
         """
         TODO: Complete Task 1 Above
@@ -103,7 +111,7 @@ class RiskParityPortfolio:
         self.exclude = exclude
         self.lookback = lookback
 
-    def calculate_weights(self):
+        def calculate_weights(self):
         # Get the assets by excluding the specified column
         assets = df.columns[df.columns != self.exclude]
 
@@ -114,7 +122,23 @@ class RiskParityPortfolio:
         TODO: Complete Task 2 Below
         """
 
+        n_assets = len(assets)
 
+        for i in range(self.lookback + 1, len(df)):
+            window_returns = df_returns[assets].iloc[i - self.lookback : i]
+
+            vol = window_returns.std()
+
+            inv_vol = 1.0 / vol
+            inv_vol.replace([np.inf, -np.inf], np.nan, inplace=True)
+
+            if inv_vol.isna().all():
+                weights = np.repeat(1.0 / n_assets, n_assets)
+            else:
+                inv_vol = inv_vol.fillna(0.0)
+                weights = inv_vol / inv_vol.sum()
+
+            self.portfolio_weights.loc[df.index[i], assets] = weights.values
 
         """
         TODO: Complete Task 2 Above
@@ -122,6 +146,7 @@ class RiskParityPortfolio:
 
         self.portfolio_weights.ffill(inplace=True)
         self.portfolio_weights.fillna(0, inplace=True)
+
 
     def calculate_portfolio_returns(self):
         # Ensure weights are calculated
@@ -174,7 +199,7 @@ class MeanVariancePortfolio:
         self.portfolio_weights.ffill(inplace=True)
         self.portfolio_weights.fillna(0, inplace=True)
 
-    def mv_opt(self, R_n, gamma):
+        def mv_opt(self, R_n, gamma):
         Sigma = R_n.cov().values
         mu = R_n.mean().values
         n = len(R_n.columns)
@@ -188,10 +213,22 @@ class MeanVariancePortfolio:
                 TODO: Complete Task 3 Below
                 """
 
-                # Sample Code: Initialize Decision w and the Objective
-                # NOTE: You can modify the following code
-                w = model.addMVar(n, name="w", ub=1)
-                model.setObjective(w.sum(), gp.GRB.MAXIMIZE)
+                w = model.addMVar(n, lb=0.0, ub=1.0, name="w")
+
+                model.addConstr(w.sum() == 1.0, name="budget")
+
+                obj_lin = gp.LinExpr()
+                for i in range(n):
+                    if mu[i] != 0:
+                        obj_lin.addTerms(mu[i], w[i])
+
+                risk = gp.QuadExpr()
+                for i in range(n):
+                    for j in range(n):
+                        if Sigma[i, j] != 0:
+                            risk.addTerms(Sigma[i, j], w[i], w[j])
+
+                model.setObjective(obj_lin - (gamma / 2.0) * risk, gp.GRB.MAXIMIZE)
 
                 """
                 TODO: Complete Task 3 Above
@@ -219,6 +256,7 @@ class MeanVariancePortfolio:
                         solution.append(var.X)
 
         return solution
+
 
     def calculate_portfolio_returns(self):
         # Ensure weights are calculated
