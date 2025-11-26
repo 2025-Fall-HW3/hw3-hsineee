@@ -54,7 +54,7 @@ class EqualWeightPortfolio:
     def __init__(self, exclude):
         self.exclude = exclude
 
-        def calculate_weights(self):
+    def calculate_weights(self):
         # Get the assets by excluding the specified column
         assets = df.columns[df.columns != self.exclude]
         self.portfolio_weights = pd.DataFrame(index=df.index, columns=df.columns)
@@ -63,11 +63,14 @@ class EqualWeightPortfolio:
         TODO: Complete Task 1 Below
         """
 
+        # 每一天都持有等權重（不含 SPY）
         n_assets = len(assets)
         equal_weight = 1.0 / n_assets
 
+        # 對所有日期、所有 sector 填入相同權重
         self.portfolio_weights.loc[:, assets] = equal_weight
 
+        # 被排除的資產 (例如 SPY) 權重為 0
         if self.exclude in self.portfolio_weights.columns:
             self.portfolio_weights[self.exclude] = 0.0
 
@@ -76,6 +79,7 @@ class EqualWeightPortfolio:
         """
         self.portfolio_weights.ffill(inplace=True)
         self.portfolio_weights.fillna(0, inplace=True)
+
 
     def calculate_portfolio_returns(self):
         # Ensure weights are calculated
@@ -111,7 +115,7 @@ class RiskParityPortfolio:
         self.exclude = exclude
         self.lookback = lookback
 
-        def calculate_weights(self):
+    def calculate_weights(self):
         # Get the assets by excluding the specified column
         assets = df.columns[df.columns != self.exclude]
 
@@ -146,6 +150,7 @@ class RiskParityPortfolio:
 
         self.portfolio_weights.ffill(inplace=True)
         self.portfolio_weights.fillna(0, inplace=True)
+
 
 
     def calculate_portfolio_returns(self):
@@ -199,7 +204,7 @@ class MeanVariancePortfolio:
         self.portfolio_weights.ffill(inplace=True)
         self.portfolio_weights.fillna(0, inplace=True)
 
-        def mv_opt(self, R_n, gamma):
+    def mv_opt(self, R_n, gamma):
         Sigma = R_n.cov().values
         mu = R_n.mean().values
         n = len(R_n.columns)
@@ -256,6 +261,7 @@ class MeanVariancePortfolio:
                         solution.append(var.X)
 
         return solution
+
 
 
     def calculate_portfolio_returns(self):

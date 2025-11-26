@@ -58,7 +58,7 @@ class MyPortfolio:
         self.lookback = lookback
         self.gamma = gamma
 
-        def calculate_weights(self):
+    def calculate_weights(self):
         # Get the assets by excluding the specified column
         assets = self.price.columns[self.price.columns != self.exclude]
 
@@ -76,8 +76,8 @@ class MyPortfolio:
         self.portfolio_weights.loc[:, assets] = base_eqw
         self.portfolio_weights[self.exclude] = 0.0
 
-        vol_lookback = self.lookback
-        mom_lookback = max(self.lookback * 3, 60)
+        vol_lookback = self.lookback              
+        mom_lookback = max(self.lookback * 3, 60) 
 
         start_idx = max(vol_lookback, mom_lookback)
 
@@ -115,6 +115,7 @@ class MyPortfolio:
 
         self.portfolio_weights.ffill(inplace=True)
         self.portfolio_weights.fillna(0, inplace=True)
+
 
 
     def calculate_portfolio_returns(self):
