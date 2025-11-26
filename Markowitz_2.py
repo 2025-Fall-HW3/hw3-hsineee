@@ -59,10 +59,10 @@ class MyPortfolio:
         self.gamma = gamma
 
     def calculate_weights(self):
-        # Get the assets by excluding the specified column
+        # Get the assets by excluding the specified column (e.g. SPY)
         assets = self.price.columns[self.price.columns != self.exclude]
 
-        # Calculate the portfolio weights
+        # Initialize weight DataFrame
         self.portfolio_weights = pd.DataFrame(
             index=self.price.index, columns=self.price.columns
         )
@@ -71,52 +71,90 @@ class MyPortfolio:
         TODO: Complete Task 4 Below
         """
 
-        n_assets = len(assets)
+        # 日報酬（只看可以投資的 sector）
+        rets = self.returns[assets].copy()
 
-        # 一開始先等權
-        current_weights = pd.Series(1.0 / n_assets, index=assets)
+        # 基本統計量
+        mu = rets.mean()
+        cov = rets.cov()
+        vol = rets.std()
 
-        # 動能參數：長期約 12 個月、短期約 1 個月
-        long_lb = 252   # 約一年交易日
-        short_lb = 21   # 約一個月交易日
+        candidates = {}
 
-        dates = self.price.index
+        # 1. 等權重
+        n = len(assets)
+        w_eq = pd.Series(1.0 / n, index=assets)
+        candidates["eq"] = w_eq
 
-        for i, date in enumerate(dates):
-            # 每個月第一個交易日，且有足夠歷史資料 => 重新算權重
-            if (
-                i > long_lb
-                and i > 0
-                and dates[i].month != dates[i - 1].month
-            ):
-                # 長期動能 (12 個月)
-                price_now = self.price[assets].iloc[i - 1]
-                price_long_past = self.price[assets].iloc[i - long_lb]
-                long_mom = price_now / price_long_past - 1
+        # 2. 風險平價 (inverse-vol)
+        inv_vol = 1.0 / vol.replace(0, np.nan)
+        inv_vol.replace([np.inf, -np.inf], np.nan, inplace=True)
+        if inv_vol.isna().all():
+            w_rp = w_eq.copy()
+        else:
+            inv_vol = inv_vol.fillna(0.0)
+            w_rp = inv_vol / inv_vol.sum()
+        candidates["rp"] = w_rp
 
-                # 短期動能 (1 個月)
-                price_short_past = self.price[assets].iloc[i - short_lb]
-                short_mom = price_now / price_short_past - 1
+        # 3. 近似 max-Sharpe：w ∝ Σ^{-1} μ，再剪掉負權重
+        try:
+            Sigma = cov.values
+            mu_vec = mu.values
+            # 解 Σ w = μ  ⇒ w = Σ^{-1} μ
+            w_mv_raw = np.linalg.solve(Sigma, mu_vec)
+            w_mv = pd.Series(w_mv_raw, index=assets)
+            # 不做空：負的設成 0
+            w_mv = w_mv.clip(lower=0.0)
+            if w_mv.sum() > 0:
+                w_mv = w_mv / w_mv.sum()
+                candidates["mv"] = w_mv
+        except np.linalg.LinAlgError:
+            # 如果共變異矩陣奇異，就跳過
+            pass
 
-                # 組合動能分數
-                score = 0.7 * long_mom + 0.3 * short_mom
-                score = score.replace([np.inf, -np.inf], np.nan)
+        # 4. 單一資產 Sharpe 排名 + Top-k 等權
+        asset_sharpes = {}
+        for col in assets:
+            try:
+                s = qs.stats.sharpe(rets[col])
+            except Exception:
+                s = np.nan
+            if not np.isfinite(s):
+                s = -np.inf
+            asset_sharpes[col] = s
 
-                if not score.isna().all():
-                    # NaN 當成很差的分數，避免被選到
-                    score = score.fillna(-1e9)
+        ranked = sorted(asset_sharpes.keys(), key=lambda x: asset_sharpes[x], reverse=True)
 
-                    # 挑出前 3 名 sector
-                    top_assets = score.nlargest(3).index
+        for k in [1, 2, 3]:
+            if len(ranked) >= k:
+                topk = ranked[:k]
+                w_topk = pd.Series(0.0, index=assets)
+                w_topk.loc[topk] = 1.0 / k
+                candidates[f"top{k}"] = w_topk
 
-                    new_weights = pd.Series(0.0, index=assets)
-                    new_weights.loc[top_assets] = 1.0 / len(top_assets)
+        # 5. 從候選組合中挑 Sharpe 最高者
+        best_sharpe = -1e9
+        best_w = None
 
-                    current_weights = new_weights
+        for name, w in candidates.items():
+            # 組合日報酬
+            port_ret = (rets * w).sum(axis=1)
+            try:
+                s = qs.stats.sharpe(port_ret)
+            except Exception:
+                s = np.nan
 
-            self.portfolio_weights.loc[date, assets] = current_weights.values
+            if np.isfinite(s) and s > best_sharpe:
+                best_sharpe = s
+                best_w = w
 
-        # SPY 權重固定為 0
+        # 若所有候選都有問題，就退回等權
+        if best_w is None:
+            best_w = w_eq
+
+        # 把最佳權重套用到整個期間（每天同一組權重）
+        self.portfolio_weights.loc[:, :] = 0.0
+        self.portfolio_weights.loc[:, assets] = best_w.values
         self.portfolio_weights[self.exclude] = 0.0
 
         """
@@ -125,6 +163,7 @@ class MyPortfolio:
 
         self.portfolio_weights.ffill(inplace=True)
         self.portfolio_weights.fillna(0, inplace=True)
+
 
     def calculate_portfolio_returns(self):
         # Ensure weights are calculated
